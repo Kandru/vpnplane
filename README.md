@@ -1,7 +1,7 @@
 > [!IMPORTANT]  
 > Disclosure: this project was created with the help of AI. I use this for myself in production and it might help you as well. I needed an alternative to a big OpnSense box because all I want to do is to inter-connect Wireguard and IPSec tunnels.
 
-![vpnplane logo](images/vpnplane_logo_transparent.png)
+![vpnplane logo](images/vpnplane_logo_transparent_small.png)
 
 # vpnplane
 
