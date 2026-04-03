@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vpnplane"
+version = "0.1.0"
+description = "Simple WireGuard/IPSec tunnel manager with zero-trust routing"
+requires-python = ">=3.11"
+license = {text = "GPL-3.0"}
+dependencies = [
+    "click>=8.1",
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "jinja2>=3.1",
+]
+
+[project.scripts]
+vpnplane = "vpnplane.connector:cli"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov", "ruff", "mypy"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,50 @@
+# IPSec (IKEv2/strongSwan) tunnel example
+# Copy to /etc/vpnplane/tunnels/ and adapt.
+# Requires: sudo apt install strongswan strongswan-swanctl
+
+type: ipsec
+
+name: ipsec-aws
+description: "AWS VPC site-to-site tunnel"
+
+local:
+  # This server's public IP address
+  address: 198.51.100.1
+  # Subnets on THIS side that should be reachable through the tunnel
+  subnets:
+    - 10.0.0.0/8
+    - fd42:10::/48
+  auth:
+    method: psk   # "psk" or "cert"
+    # Path to a text file containing just the pre-shared key
+    secret: /etc/ipsec.d/secrets/ipsec-aws.psk
+
+remote:
+  # Remote VPN gateway's public IP
+  address: 54.0.0.1
+  # Subnets on the REMOTE side reachable through the tunnel
+  subnets:
+    - 172.31.0.0/16
+    - fd42:172:31::/64
+  auth:
+    method: psk
+    secret: /etc/ipsec.d/secrets/ipsec-aws.psk   # same PSK file, shared secret
+
+# IKE (key exchange) parameters
+ike:
+  version: 2          # Always use IKEv2
+  encryption: aes256
+  integrity: sha256
+  dh_group: modp2048
+  lifetime: 86400     # IKE SA lifetime in seconds (24h)
+
+# ESP (data encryption) parameters
+esp:
+  encryption: aes256
+  integrity: sha256
+  lifetime: 3600      # Child SA lifetime in seconds (1h)
+  dpd_action: restart # What to do when dead peer is detected: restart|clear|none
+  dpd_delay: 30       # Dead peer detection probe interval in seconds
+
+# If true, this machine initiates the tunnel on startup
+auto_start: true

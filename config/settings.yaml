@@ -1,0 +1,13 @@
+# vpnplane settings
+# Located at /etc/vpnplane/settings.yaml
+# Created automatically by: vpnplane init
+
+# Public IP/hostname of this server (used as Endpoint in peer exports)
+server_address: ""
+
+wireguard:
+  # Default listen port for new tunnels and export fallback
+  default_listen_port: 51820
+
+  # First subnet block for auto-assigning tunnel addresses
+  start_network: 10.100.0.0/30

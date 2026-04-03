@@ -1,0 +1,43 @@
+# Route rule example
+# Copy to /etc/vpnplane/routes/ and adapt.
+# Each file defines ONE routing rule between two interfaces/subnets.
+# Default policy: DENY — only explicitly listed routes are allowed.
+# To route roadwarrior traffic to the internet via this host, create a separate
+# rule using `to.interface: <WAN_NIC>` and
+# `to.subnets: [0.0.0.0/0, ::/0]` for dual-stack egress.
+# Keep that broad internet route after more specific internal routes.
+
+# Unique name for this rule (used in logs and status output)
+name: office-to-datacenter
+description: "Allow office LAN to reach datacenter web services"
+
+# Source: where traffic comes FROM
+from:
+  # Interface name — must match a tunnel name in tunnels/, or a physical NIC (e.g. eth0)
+  interface: wg-office
+  # Optional: restrict to specific source subnets within this interface.
+  # Leave empty ([]) to match ALL traffic arriving on this interface.
+  subnets:
+    - 192.168.10.0/24
+
+# Destination: where traffic goes TO
+to:
+  interface: wg-datacenter
+  subnets:
+    - 172.16.1.0/24
+
+# Protocol: tcp | udp | icmp | any
+protocol: tcp
+
+# Destination ports (only relevant for tcp/udp). Leave empty for all ports.
+ports:
+  - 80
+  - 443
+  - 22
+
+# If true, reverse rules are auto-generated (dst → src).
+# Return traffic (ESTABLISHED/RELATED) is always allowed automatically.
+bidirectional: true
+
+# allow (default) or deny
+action: allow
