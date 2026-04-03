@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import sys
 from pathlib import Path
 
@@ -212,9 +213,15 @@ def _prompt_wireguard_tunnel(existing: dict | None = None, config_dir: Path | No
     )
 
     default_address = e.get("address")
+    default_transfer_subnet = e.get("tunnel_subnet")
+    auto_tunnel_addr = None
     if not existing and config_dir is not None:
         try:
-            default_address = next_free_tunnel_addr(config_dir)
+            auto_tunnel_addr = next_free_tunnel_addr(config_dir)
+            if default_address is None:
+                default_address = auto_tunnel_addr
+            if default_transfer_subnet is None and auto_tunnel_addr:
+                default_transfer_subnet = str(ipaddress.ip_interface(auto_tunnel_addr).network)
         except Exception as exc:
             console.print(f"[yellow]Could not auto-detect free subnet: {exc}[/yellow]")
     if fritzbox:
@@ -223,8 +230,13 @@ def _prompt_wireguard_tunnel(existing: dict | None = None, config_dir: Path | No
             "(first usable host in the subnet), e.g. [bold]192.168.178.1/24[/bold][/dim]"
         )
         address = _p("Tunnel address — FritzBox gateway IP (e.g. 192.168.178.1/24)", default_address)
+        tunnel_subnet = _p(
+            "Host WireGuard transfer subnet (CIDR, e.g. 10.100.0.0/30)",
+            default_transfer_subnet,
+        )
     else:
         address = _p("Tunnel address (CIDR, e.g. 10.100.0.1/24)", default_address)
+        tunnel_subnet = None
 
     default_port: str | int = e.get("listen_port", "")
     if not existing and config_dir is not None and not default_port:
@@ -266,13 +278,39 @@ def _prompt_wireguard_tunnel(existing: dict | None = None, config_dir: Path | No
         "fritzbox": fritzbox,
         "description": description,
     }
+    if tunnel_subnet:
+        data["tunnel_subnet"] = tunnel_subnet
 
     if listen_port is not None:
         data["listen_port"] = listen_port
     if dns_raw.strip():
         data["dns"] = [d.strip() for d in dns_raw.split(",") if d.strip()]
 
-    data["peer"] = _prompt_peer(name, tunnel_addr=address, existing=e.get("peer"))
+    peer_tunnel_addr = address
+    if fritzbox and tunnel_subnet:
+        try:
+            net = ipaddress.ip_network(tunnel_subnet, strict=True)
+            first_host = next(net.hosts(), None)
+            if first_host is not None:
+                peer_tunnel_addr = f"{first_host}/{net.prefixlen}"
+        except ValueError:
+            # Keep prompt flow interactive; model validation will report invalid subnet.
+            peer_tunnel_addr = address
+
+    fritzbox_subnet: str | None = None
+    if fritzbox:
+        try:
+            fritzbox_subnet = str(ipaddress.ip_interface(address).network)
+        except ValueError:
+            fritzbox_subnet = None
+
+    data["peer"] = _prompt_peer(
+        name,
+        tunnel_addr=peer_tunnel_addr,
+        existing=e.get("peer"),
+        fritzbox=fritzbox,
+        fritzbox_subnet=fritzbox_subnet,
+    )
     return data
 
 
@@ -280,6 +318,8 @@ def _prompt_peer(
     tunnel_name: str,
     existing: dict | None = None,
     tunnel_addr: str | None = None,
+    fritzbox: bool = False,
+    fritzbox_subnet: str | None = None,
 ) -> dict:
     e = existing or {}
     # Peer name is always the tunnel name
@@ -306,16 +346,32 @@ def _prompt_peer(
             console.print(f" [red]Key generation failed ({exc}), enter manually:[/red]")
             public_key = click.prompt(" Public key (base64)")
 
-    # Determine the peer's tunnel address (auto-assigned /32)
+    # Determine the peer's transfer address (auto-assigned).
     peer_tunnel_ip = ""
     if not existing and tunnel_addr:
         try:
             peer_tunnel_ip = next_free_peer_ip(tunnel_addr, [])
+            if fritzbox:
+                transfer_prefix = ipaddress.ip_interface(tunnel_addr).network.prefixlen
+                peer_tunnel_ip = f"{ipaddress.ip_interface(peer_tunnel_ip).ip}/{transfer_prefix}"
         except Exception:
             pass
     elif existing:
         existing_allowed = e.get("allowed_ips", [])
-        if existing_allowed:
+        if existing_allowed and tunnel_addr:
+            try:
+                local_net = ipaddress.ip_interface(tunnel_addr).network
+                peer_tunnel_ip = next(
+                    (
+                        ip
+                        for ip in existing_allowed
+                        if ipaddress.ip_network(ip, strict=False).overlaps(local_net)
+                    ),
+                    "",
+                )
+            except Exception:
+                peer_tunnel_ip = ""
+        if existing_allowed and not peer_tunnel_ip:
             peer_tunnel_ip = next(
                 (ip for ip in existing_allowed if ip.endswith("/32") or ip.endswith("/128")),
                 ""
@@ -330,14 +386,18 @@ def _prompt_peer(
         elif existing_allowed:
             existing_remote = existing_allowed
 
+    if fritzbox and fritzbox_subnet and fritzbox_subnet not in existing_remote:
+        existing_remote.append(fritzbox_subnet)
+
     endpoint = _p(" Endpoint (host:port, or blank for roaming)", e.get("endpoint", ""))
 
-    if peer_tunnel_ip:
-        displayed_tunnel_ip = _p(" Peer tunnel address", peer_tunnel_ip)
-    else:
-        displayed_tunnel_ip = _p(" Peer tunnel address (e.g. 10.100.0.2/32)", "")
-        if displayed_tunnel_ip:
-            peer_tunnel_ip = displayed_tunnel_ip.strip()
+    if not fritzbox:
+        if peer_tunnel_ip:
+            displayed_tunnel_ip = _p(" Peer tunnel address", peer_tunnel_ip)
+        else:
+            displayed_tunnel_ip = _p(" Peer tunnel address (e.g. 10.100.0.2/32)", "")
+            if displayed_tunnel_ip:
+                peer_tunnel_ip = displayed_tunnel_ip.strip()
 
     remote_subnets_raw = _p(
         " Remote subnets reachable via this peer (comma-separated, optional)",
@@ -353,6 +413,8 @@ def _prompt_peer(
             ip.strip() for ip in remote_subnets_raw.split(",")
             if ip.strip() and ip.strip() != peer_tunnel_ip
         ])
+    if fritzbox and fritzbox_subnet and fritzbox_subnet not in allowed_ips:
+        allowed_ips.append(fritzbox_subnet)
 
     keepalive = _prompt_int(
         " Persistent keepalive (0 to disable)",

@@ -99,6 +99,7 @@ class WireGuardTunnel(BaseModel):
     mtu: int = Field(default=1420, ge=576, le=9000)
     table: str = "auto"
     fritzbox: bool = False
+    tunnel_subnet: str | None = None
     post_up: list[str] = []
     post_down: list[str] = []
     peer: WireGuardPeer | None = None
@@ -116,6 +117,17 @@ class WireGuardTunnel(BaseModel):
                 ipaddress.ip_address(entry)
             except ValueError:
                 raise ValueError(f"Invalid DNS IP: {entry!r}")
+        return v
+
+    @field_validator("tunnel_subnet")
+    @classmethod
+    def validate_tunnel_subnet(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        try:
+            ipaddress.ip_network(v, strict=True)
+        except ValueError:
+            raise ValueError(f"Invalid tunnel_subnet CIDR network: {v!r}")
         return v
 
     @model_validator(mode="after")
@@ -136,7 +148,36 @@ class WireGuardTunnel(BaseModel):
                 "(first usable host), e.g. 192.168.178.1/24"
             )
 
+        if not self.tunnel_subnet:
+            raise ValueError(
+                "fritzbox=true requires tunnel_subnet (e.g. 10.100.0.0/30) "
+                "for the host-side WireGuard transfer network"
+            )
+
+        transfer_net = ipaddress.ip_network(self.tunnel_subnet, strict=True)
+        if transfer_net.version != 4:
+            raise ValueError("fritzbox=true currently supports IPv4 tunnel_subnet only")
+        if transfer_net.prefixlen >= 31:
+            raise ValueError("fritzbox=true requires tunnel_subnet with at least 2 usable hosts (e.g. /30)")
+
         return self
+
+    def interface_address(self) -> str:
+        """Return the address assigned to the local Linux WireGuard interface."""
+        if not self.fritzbox:
+            return self.address
+
+        transfer_net = ipaddress.ip_network(self.tunnel_subnet, strict=True)
+        first_host = next(transfer_net.hosts(), None)
+        if first_host is None:
+            raise ValueError(
+                f"tunnel_subnet has no usable host IPs: {self.tunnel_subnet}"
+            )
+        return f"{first_host}/{transfer_net.prefixlen}"
+
+    def interface_network(self) -> ipaddress.IPv4Network | ipaddress.IPv6Network:
+        """Return the network of the local Linux WireGuard interface."""
+        return ipaddress.ip_interface(self.interface_address()).network
 
     @model_validator(mode="after")
     def private_key_must_exist(self) -> WireGuardTunnel:

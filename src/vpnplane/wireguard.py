@@ -27,7 +27,7 @@ _WG_CONF_TEMPLATE = """\
 # DO NOT EDIT MANUALLY — changes will be overwritten by vpnplane
 
 [Interface]
-Address = {{ tunnel.address }}
+Address = {{ interface_address }}
 PrivateKey = {{ private_key }}
 {% if tunnel.listen_port -%}
 ListenPort = {{ tunnel.listen_port }}
@@ -97,6 +97,7 @@ _env = Environment(keep_trailing_newline=True, undefined=Undefined)
 
 def _render_conf(tunnel: WireGuardTunnel, dry_run: bool = False) -> str:
     private_key = read_key_file(tunnel.private_key)
+    interface_address = tunnel.interface_address()
 
     psk: str | None = None
     if tunnel.peer is not None:
@@ -112,6 +113,7 @@ def _render_conf(tunnel: WireGuardTunnel, dry_run: bool = False) -> str:
     rendered = tmpl.render(
         managed_header=MANAGED_HEADER,
         tunnel=tunnel,
+        interface_address=interface_address,
         private_key=private_key,
         peer=tunnel.peer,
         psk=psk,
@@ -312,21 +314,25 @@ def export_peer_config(
     elif peer.preshared_key is not None:
         psk = read_key_file(peer.preshared_key)
 
-    # Peer's tunnel address: first /32 or /128 in allowed_ips
-    peer_address: str | None = next(
-        (ip for ip in peer.allowed_ips if ip.endswith("/32") or ip.endswith("/128")),
-        None,
-    )
-    if peer_address is None:
-        # Fallback: use second host in tunnel subnet (server takes first)
-        tunnel_iface = ipaddress.ip_interface(tunnel.address)
-        hosts = list(tunnel_iface.network.hosts())
-        chosen = hosts[1] if len(hosts) > 1 else hosts[-1]
-        peer_address = f"{chosen}/32"
+    if tunnel.fritzbox:
+        # FritzBox exports use the FritzBox gateway IP as peer interface address.
+        peer_address = tunnel.address
+    else:
+        # Peer's tunnel address: first /32 or /128 in allowed_ips
+        peer_address = next(
+            (ip for ip in peer.allowed_ips if ip.endswith("/32") or ip.endswith("/128")),
+            None,
+        )
+        if peer_address is None:
+            # Fallback: use second host in tunnel subnet (server takes first)
+            tunnel_iface = ipaddress.ip_interface(tunnel.interface_address())
+            hosts = list(tunnel_iface.network.hosts())
+            chosen = hosts[1] if len(hosts) > 1 else hosts[-1]
+            peer_address = f"{chosen}/32"
 
     # What the peer should route via us
     if allowed_ips is None:
-        tunnel_network = str(ipaddress.ip_interface(tunnel.address).network)
+        tunnel_network = str(tunnel.interface_network())
         allowed_ips = [tunnel_network]
 
     # Use stored peer private key if it was auto-generated during tunnel add

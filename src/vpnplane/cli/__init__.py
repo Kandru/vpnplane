@@ -143,7 +143,7 @@ def _validate_wireguard_route_reachability(
             ipaddress.ip_network(cidr, strict=False)
             for cidr in dst_tunnel.peer.allowed_ips
         ]
-        tunnel_network = ipaddress.ip_interface(dst_tunnel.address).network
+        tunnel_network = dst_tunnel.interface_network()
         non_tunnel_peer_networks = [n for n in peer_networks if not n.overlaps(tunnel_network)]
 
         if route.to.subnets:
@@ -176,7 +176,7 @@ def _validate_overlapping_wg_allowed_ips(wg_tunnels: list[WireGuardTunnel]) -> i
     """
     tunnel_networks: dict[str, ipaddress._BaseNetwork] = {}
     for tunnel in wg_tunnels:
-        tunnel_networks[tunnel.name] = ipaddress.ip_interface(tunnel.address).network
+        tunnel_networks[tunnel.name] = tunnel.interface_network()
 
     advertised: list[tuple[str, ipaddress._BaseNetwork]] = []
     for tunnel in wg_tunnels:

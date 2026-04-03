@@ -16,6 +16,10 @@ address: 192.168.178.1/24
 # Enable when the remote side is a FritzBox site-to-site peer.
 fritzbox: false
 
+# Required when fritzbox: true.
+# Transfer subnet used on this host's WireGuard interface (host uses first usable IP).
+tunnel_subnet: 10.100.0.0/30
+
 # UDP port this machine listens on (omit for client-only mode)
 # Each connection should use a unique port (auto-assigned by: vpnplane tunnel add)
 listen_port: 51820
@@ -41,7 +45,8 @@ peer:
   # Endpoint: peer's public IP:port (omit if the peer roams / has no fixed IP)
   endpoint: "203.0.113.10:51820"
   # Subnets reachable via this peer
-  # Always include the peer's tunnel IP (/32 or /128), plus any subnets behind them
+  # Always include the peer's tunnel IP (or transfer subnet in FritzBox mode),
+  # plus any subnets behind them
   allowed_ips:
     - 10.10.1.2/32        # peer's tunnel IP
     - fd42:10:10::2/128   # peer's IPv6 tunnel IP (optional)
