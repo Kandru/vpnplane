@@ -299,6 +299,12 @@ def _apply_filter_rules(routes: list[RouteRule], managed_ifaces: set[str], dry_r
                 run(cmd, dry_run=dry_run)
                 rendered += 1
 
+        # Default deny between managed tunnel interfaces unless explicitly allowed above.
+        default_drops = _build_default_inter_tunnel_drop_commands(managed_ifaces, binary=binary)
+        for cmd in default_drops:
+            run(cmd, dry_run=dry_run)
+            rendered += 1
+
         # Do not force a global drop here; return to parent policy for non-managed traffic.
         run(
             [
@@ -322,7 +328,42 @@ def _apply_filter_rules(routes: list[RouteRule], managed_ifaces: set[str], dry_r
                 f"[green]  {binary} filter: {rendered} managed forwarding rule(s) applied[/green]"
             )
         else:
-            console.print(f"[dim]  {binary} filter: no route rules configured[/dim]")
+            console.print(
+                f"[dim]  {binary} filter: no route rules configured"
+                f" ({len(default_drops)} default inter-tunnel drop rule(s) applied)[/dim]"
+            )
+
+
+def _build_default_inter_tunnel_drop_commands(
+    managed_ifaces: set[str], *, binary: str
+) -> list[list[str]]:
+    """Build DROP rules for every cross-tunnel direction."""
+    commands: list[list[str]] = []
+    ifaces = sorted(managed_ifaces)
+    for in_iface in ifaces:
+        for out_iface in ifaces:
+            if in_iface == out_iface:
+                continue
+            commands.append(
+                [
+                    binary,
+                    "-t",
+                    "filter",
+                    "-A",
+                    FORWARD_CHAIN,
+                    "-i",
+                    in_iface,
+                    "-o",
+                    out_iface,
+                    "-m",
+                    "comment",
+                    "--comment",
+                    "wg-forward:default-inter-tunnel-drop",
+                    "-j",
+                    "DROP",
+                ]
+            )
+    return commands
 
 
 def _apply_nat_rules(routes: list[RouteRule], managed_ifaces: set[str], dry_run: bool) -> None:
