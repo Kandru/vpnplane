@@ -9,6 +9,8 @@ vpnplane is a simple, file-based VPN manager for Ubuntu servers.
 
 You define tunnels and routes in YAML, then run one command to apply everything.
 
+It is intended to run on a small virtual server with Ubuntu 24.04 or newer hence it (currently) needs root-permissions to work. Migrating to Docker is on my road map. Do not run anything else on the VM to avoid potential network conflicts. It's okay to have ufw allowing SSH.
+
 ## A Short Story
 
 My home and lab setup grew over time: multiple FritzBox locations, a few OPNsense firewalls, and roadwarrior clients (smartphone, laptop, tablet) that need secure access while traveling.
