@@ -37,9 +37,10 @@ def apply_firewall(
 ) -> None:
     """Apply all managed firewall state: sysctl and forwarding/input rules."""
     managed_ifaces = {t.name for t in wg_tunnels} | {t.name for t in ipsec_tunnels}
+    managed_subnets = _collect_managed_subnets(wg_tunnels, ipsec_tunnels)
     _apply_sysctl(dry_run)
     _apply_input_rules(wg_tunnels, dry_run)
-    _apply_filter_rules(routes, managed_ifaces, dry_run)
+    _apply_filter_rules(routes, managed_ifaces, managed_subnets, dry_run)
     _apply_nat_rules(routes, managed_ifaces, dry_run)
 
 
@@ -232,6 +233,10 @@ def _is_default_ipv6_subnet(subnet: str | None) -> bool:
     return subnet == "::/0"
 
 
+def _is_default_subnet(subnet: str | None) -> bool:
+    return _is_default_ipv4_subnet(subnet) or _is_default_ipv6_subnet(subnet)
+
+
 def _subnet_ip_version(subnet: str | None) -> int | None:
     if subnet is None:
         return None
@@ -264,7 +269,41 @@ def _order_routes(routes: list[RouteRule], managed_ifaces: set[str]) -> list[Rou
     return regular + internet
 
 
-def _apply_filter_rules(routes: list[RouteRule], managed_ifaces: set[str], dry_run: bool) -> None:
+def _collect_managed_subnets(
+    wg_tunnels: list[WireGuardTunnel], ipsec_tunnels: list[IPSecTunnel]
+) -> set[str]:
+    """Collect tunnel networks that represent managed VPN domains."""
+    subnets: set[str] = set()
+
+    for tunnel in wg_tunnels:
+        iface_subnet = str(ipaddress.ip_interface(tunnel.interface_address()).network)
+        if not _is_default_subnet(iface_subnet):
+            subnets.add(iface_subnet)
+
+        # Treat peer AllowedIPs as managed tunnel destinations for default deny.
+        if tunnel.peer:
+            for peer_subnet in tunnel.peer.allowed_ips:
+                canonical = str(ipaddress.ip_network(peer_subnet, strict=False))
+                if _is_default_subnet(canonical):
+                    continue
+                subnets.add(canonical)
+
+    for tunnel in ipsec_tunnels:
+        for subnet in tunnel.local.subnets + tunnel.remote.subnets:
+            canonical = str(ipaddress.ip_network(subnet, strict=False))
+            if _is_default_subnet(canonical):
+                continue
+            subnets.add(canonical)
+
+    return subnets
+
+
+def _apply_filter_rules(
+    routes: list[RouteRule],
+    managed_ifaces: set[str],
+    managed_subnets: set[str],
+    dry_run: bool,
+) -> None:
     ordered_routes = _order_routes(routes, managed_ifaces)
 
     for binary, family in (("iptables", 4), ("ip6tables", 6)):
@@ -299,8 +338,13 @@ def _apply_filter_rules(routes: list[RouteRule], managed_ifaces: set[str], dry_r
                 run(cmd, dry_run=dry_run)
                 rendered += 1
 
-        # Default deny between managed tunnel interfaces unless explicitly allowed above.
-        default_drops = _build_default_inter_tunnel_drop_commands(managed_ifaces, binary=binary)
+        # Default deny: managed tunnel subnets cannot forward anywhere unless
+        # explicitly allowed by route rules rendered above.
+        default_drops = _build_default_managed_subnet_egress_drop_commands(
+            managed_subnets,
+            binary=binary,
+            family=family,
+        )
         for cmd in default_drops:
             run(cmd, dry_run=dry_run)
             rendered += 1
@@ -330,39 +374,34 @@ def _apply_filter_rules(routes: list[RouteRule], managed_ifaces: set[str], dry_r
         else:
             console.print(
                 f"[dim]  {binary} filter: no route rules configured"
-                f" ({len(default_drops)} default inter-tunnel drop rule(s) applied)[/dim]"
+                f" ({len(default_drops)} default managed-subnet drop rule(s) applied)[/dim]"
             )
 
 
-def _build_default_inter_tunnel_drop_commands(
-    managed_ifaces: set[str], *, binary: str
+def _build_default_managed_subnet_egress_drop_commands(
+    managed_subnets: set[str], *, binary: str, family: int
 ) -> list[list[str]]:
-    """Build DROP rules for every cross-tunnel direction."""
+    """Build DROP rules for forwarding sourced from managed tunnel subnets."""
     commands: list[list[str]] = []
-    ifaces = sorted(managed_ifaces)
-    for in_iface in ifaces:
-        for out_iface in ifaces:
-            if in_iface == out_iface:
-                continue
-            commands.append(
-                [
-                    binary,
-                    "-t",
-                    "filter",
-                    "-A",
-                    FORWARD_CHAIN,
-                    "-i",
-                    in_iface,
-                    "-o",
-                    out_iface,
-                    "-m",
-                    "comment",
-                    "--comment",
-                    "wg-forward:default-inter-tunnel-drop",
-                    "-j",
-                    "DROP",
-                ]
-            )
+    subnets = sorted(s for s in managed_subnets if _subnet_applies_to_family(s, family))
+    for src_subnet in subnets:
+        commands.append(
+            [
+                binary,
+                "-t",
+                "filter",
+                "-A",
+                FORWARD_CHAIN,
+                "-s",
+                src_subnet,
+                "-m",
+                "comment",
+                "--comment",
+                "wg-forward:default-managed-subnet-egress-drop",
+                "-j",
+                "DROP",
+            ]
+        )
     return commands
 
 
