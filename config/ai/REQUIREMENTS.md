@@ -75,8 +75,7 @@ The goal is a **minimal, self-hosted alternative** that is configured entirely v
 - `route add/edit/delete/list` — interactive CRUD for route config files
 
 **Install / Update / Uninstall**
-- `install.sh` — installs to `/opt/vpnplane/`, symlinks to `/usr/local/bin/vpnplane`
-- `update.sh` — pulls latest from GitHub and reinstalls Python package
+- `install.sh` — installs to `/opt/vpnplane/`, symlinks to `/usr/local/bin/vpnplane`, and updates existing installations
 - `uninstall.sh` — removes tool (default: keeps tunnels/config); `--full` removes everything
 
 ### Non-Functional

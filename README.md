@@ -91,7 +91,7 @@ sudo vpnplane status
 ## Update Guide
 
 ```bash
-sudo bash /opt/vpnplane/update.sh
+sudo bash /opt/vpnplane/install.sh
 ```
 
 After updating, validate and apply again:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — install vpnplane on an Ubuntu server
+# install.sh — install or update vpnplane on an Ubuntu server
 # Usage: sudo bash install.sh
 
 set -euo pipefail
@@ -61,10 +61,19 @@ if ! ufw status | grep -q "Status: active"; then
     fi
 fi
 
-# ---- clone or copy ----
+# ---- clone, copy, or update source ----
 if [[ -d "$INSTALL_DIR/.git" ]]; then
-    log "Found existing installation at $INSTALL_DIR — updating..."
-    git -C "$INSTALL_DIR" pull --ff-only
+    log "Found existing installation at $INSTALL_DIR — checking for updates..."
+    CURRENT_SHA=$(git -C "$INSTALL_DIR" rev-parse HEAD)
+    git -C "$INSTALL_DIR" fetch --depth=1 origin main
+    NEW_SHA=$(git -C "$INSTALL_DIR" rev-parse FETCH_HEAD)
+
+    if [[ "$CURRENT_SHA" == "$NEW_SHA" ]]; then
+        log "Already up to date ($(git -C "$INSTALL_DIR" describe --tags --always 2>/dev/null || echo "${CURRENT_SHA:0:8}"))."
+    else
+        log "Updating: ${CURRENT_SHA:0:8} -> ${NEW_SHA:0:8}"
+        git -C "$INSTALL_DIR" merge --ff-only FETCH_HEAD
+    fi
 else
     # If script is run from inside the repo, copy it; otherwise clone
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
