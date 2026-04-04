@@ -111,6 +111,10 @@ sudo bash /opt/vpnplane/uninstall.sh
 
 This removes the installed vpnplane files from the target system.
 
+## A word to Fritz!Box Wireguard behaviour for site to site VPNs
+
+I've encountered unexpected behavior with the Fritz!Box WireGuard implementation that differs from OPNsense. To establish a site to site VPN you need to set the WireGuard tunnel interface to the same IP address as the Fritz!Box's primary interface. For example, if your Fritz!Box uses 192.168.178.1/24, the WireGuard tunnel must use this address as well. Without this configuration, the Fritz!Box will apply Network Address Translation (NAT) behavior.
+
 ## License
 
 GPL-3.0 - see [LICENSE](LICENSE)
