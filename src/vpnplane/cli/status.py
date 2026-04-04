@@ -287,7 +287,7 @@ def _wireguard_traffic_cell(
             if prev:
                 rx_rate = max(0, rx - prev[0]) / interval_secs
                 tx_rate = max(0, tx - prev[1]) / interval_secs
-                line += f" | \u2193 {format_speed(rx_rate)}/s \u2191 {format_speed(tx_rate)}/s"
+                line += f" | \u2193 {format_speed(rx_rate)} \u2191 {format_speed(tx_rate)}"
             else:
                 line += " | [dim]rate n/a[/dim]"
 
