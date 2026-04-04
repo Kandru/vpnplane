@@ -273,25 +273,65 @@ def export_ipsec_config(tunnel: IPSecTunnel) -> str:
 # ---------------------------------------------------------------------------
 
 def get_ipsec_status() -> list[dict]:
-    """Return status info for managed IPSec connections."""
+    """Return status info for managed and active IPSec connections."""
     if not _strongswan_available():
         return []
 
     managed = _managed_conf_names()
+    parsed: dict[str, dict] = {}
+    current_name: str | None = None
 
     try:
-        result = subprocess.run(
-            ["swanctl", "--list-sas", "--raw"], capture_output=True, text=True
-        )
-        active_names = set()
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line and not line.startswith(" ") and ":" in line:
-                active_names.add(line.split(":")[0].strip())
-    except FileNotFoundError:
-        active_names = set()
+        result = subprocess.run(["swanctl", "--list-sas"], capture_output=True, text=True)
+        for raw_line in result.stdout.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
 
-    return [
-        {"name": name, "active": name in active_names}
-        for name in sorted(managed)
-    ]
+            # Top-level IKE SA header: <name>: #1, ESTABLISHED, ...
+            if not raw_line.startswith(" ") and ":" in line:
+                name, rest = line.split(":", 1)
+                state = "UNKNOWN"
+                fields = [part.strip() for part in rest.split(",") if part.strip()]
+                if len(fields) >= 2:
+                    state = fields[1]
+
+                current_name = name.strip()
+                parsed[current_name] = {
+                    "name": current_name,
+                    "state": state,
+                    "active": state in {"ESTABLISHED", "CONNECTING", "REKEYING"},
+                    "established_ago": None,
+                    "child_sas": 0,
+                }
+                continue
+
+            if current_name is None:
+                continue
+
+            established_match = re.search(r"established\s+([^,]+?)\s+ago", line)
+            if established_match and parsed[current_name]["established_ago"] is None:
+                parsed[current_name]["established_ago"] = f"{established_match.group(1)} ago"
+
+            # Child SA lines usually contain reqid and child state (e.g. INSTALLED).
+            if ":" in line and "reqid" in line:
+                parsed[current_name]["child_sas"] += 1
+                if "INSTALLED" in line:
+                    parsed[current_name]["active"] = True
+    except FileNotFoundError:
+        parsed = {}
+
+    all_names = sorted(managed | set(parsed.keys()))
+    statuses: list[dict] = []
+    for name in all_names:
+        info = parsed.get(name, {
+            "name": name,
+            "state": "DOWN",
+            "active": False,
+            "established_ago": None,
+            "child_sas": 0,
+        })
+        info["managed"] = name in managed
+        statuses.append(info)
+
+    return statuses

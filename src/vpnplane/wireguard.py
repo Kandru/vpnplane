@@ -369,7 +369,11 @@ def export_peer_config(
 def get_wireguard_status() -> list[dict]:
     """
     Return status info for all WireGuard interfaces.
-    Each dict: {name, address, listen_port, peers: [{public_key, endpoint, allowed_ips, handshake}]}
+    Each dict: {
+      name, managed, active, address?, listen_port?,
+      peers: [{public_key, public_key_short, endpoint, allowed_ips, handshake,
+               rx_bytes, tx_bytes, persistent_keepalive}]
+    }
     """
     managed = _managed_conf_names()
     active = _active_interface_names()
@@ -409,8 +413,10 @@ def _parse_wg_show(interface: str) -> list[dict]:
         parts = line.split("\t")
         if len(parts) < 8:
             continue
-        pubkey, _, endpoint, allowed_ips, latest_handshake, _, _, _ = parts[:8]
+        pubkey, _, endpoint, allowed_ips, latest_handshake, rx_bytes, tx_bytes, keepalive = parts[:8]
         handshake_ago: str | None = None
+        rx = 0
+        tx = 0
         try:
             ts = int(latest_handshake)
             if ts > 0:
@@ -424,10 +430,21 @@ def _parse_wg_show(interface: str) -> list[dict]:
         except (ValueError, TypeError):
             pass
 
+        try:
+            rx = max(0, int(rx_bytes))
+            tx = max(0, int(tx_bytes))
+        except (ValueError, TypeError):
+            rx = 0
+            tx = 0
+
         peers.append({
-            "public_key": pubkey[:12] + "...",
+            "public_key": pubkey,
+            "public_key_short": pubkey[:12] + "...",
             "endpoint": endpoint if endpoint != "(none)" else None,
             "allowed_ips": allowed_ips,
             "handshake": handshake_ago,
+            "rx_bytes": rx,
+            "tx_bytes": tx,
+            "persistent_keepalive": keepalive if keepalive and keepalive != "off" else None,
         })
     return peers

@@ -6,15 +6,13 @@ import sys
 from pathlib import Path
 
 import click
-from rich.table import Table
 
 from ..firewall import (
     apply_firewall,
     cleanup_firewall_managed_state,
-    get_firewall_status,
     reset_firewall_managed_state,
 )
-from ..ipsec import apply_ipsec, disable_ipsec, get_ipsec_status
+from ..ipsec import apply_ipsec, disable_ipsec
 from ..utils import (
     DEFAULT_CONFIG_DIR,
     WG_KEY_DIR,
@@ -23,7 +21,7 @@ from ..utils import (
     generate_wireguard_keypair,
     require_root,
 )
-from ..wireguard import apply_wireguard, get_wireguard_status
+from ..wireguard import apply_wireguard
 from ..wireguard import disable_wireguard
 from . import _load_and_validate, cli
 
@@ -126,67 +124,6 @@ def check(config_dir: str) -> None:
         f"[bold green]Config OK[/bold green] — "
         f"{total} tunnel(s), {len(routes)} route(s)"
     )
-
-
-@cli.command()
-def status() -> None:
-    """Show current tunnel status and active routing rules."""
-    require_root()
-    check_required_tools()
-
-    try:
-        wg_statuses = get_wireguard_status()
-        ipsec_statuses = get_ipsec_status()
-    except Exception as exc:
-        console.print(f"[bold red]Status failed:[/bold red] {exc}")
-        sys.exit(1)
-
-    if wg_statuses or ipsec_statuses:
-        t = Table(title="Tunnels", show_header=True, header_style="bold")
-        t.add_column("Name")
-        t.add_column("Type")
-        t.add_column("Status")
-        t.add_column("Address/Info")
-        t.add_column("Peers")
-
-        for s in wg_statuses:
-            status_str = "[green]UP[/green]" if s.get("active") else "[red]DOWN[/red]"
-            managed_str = " (managed)" if s.get("managed") else " [dim](unmanaged)[/dim]"
-            peer_lines = []
-            for p in s.get("peers", []):
-                hs = p.get("handshake") or "never"
-                ep = p.get("endpoint") or "roaming"
-                peer_lines.append(f"{p['allowed_ips']}  {ep}  [dim]{hs}[/dim]")
-            t.add_row(
-                s["name"] + managed_str,
-                "WireGuard",
-                status_str,
-                s.get("address", ""),
-                "\n".join(peer_lines) or "[dim]none[/dim]",
-            )
-
-        for s in ipsec_statuses:
-            status_str = "[green]UP[/green]" if s.get("active") else "[red]DOWN[/red]"
-            t.add_row(s["name"], "IPSec", status_str, "", "")
-
-        console.print(t)
-    else:
-        console.print("[dim]No managed tunnels found.[/dim]")
-
-    try:
-        fw_status = get_firewall_status()
-    except Exception as exc:
-        console.print(f"[bold red]Firewall status lookup failed:[/bold red] {exc}")
-        sys.exit(1)
-    if fw_status:
-        rt = Table(title="\nActive Routes", show_header=True, header_style="bold")
-        rt.add_column("Rule Name")
-        rt.add_column("Forward Rules")
-        for rule in fw_status:
-            rt.add_row(rule["name"], "\n".join(rule["rules"]) or "[dim]none[/dim]")
-        console.print(rt)
-    else:
-        console.print("[dim]\nNo managed routing rules found.[/dim]")
 
 
 @cli.command()

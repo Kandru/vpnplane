@@ -328,3 +328,41 @@ def next_free_port(config_dir: Path) -> int:
             return port
         port += 1
     raise RuntimeError(f"No free ports found starting from {start}")
+
+
+# ---------------------------------------------------------------------------
+# Display formatting helpers
+# ---------------------------------------------------------------------------
+
+def format_bytes(value: int) -> str:
+    """Format bytes with automatic unit scaling."""
+    if value < 0:
+        value = 0
+
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(value)
+    unit_idx = 0
+    while size >= 1024.0 and unit_idx < len(units) - 1:
+        size /= 1024.0
+        unit_idx += 1
+
+    if unit_idx == 0:
+        return f"{int(size)} {units[unit_idx]}"
+    return f"{size:.1f} {units[unit_idx]}"
+
+
+def format_speed(bytes_per_sec: float) -> str:
+    """Format throughput as B/s, KB/s, MB/s, or GB/s depending on magnitude."""
+    if bytes_per_sec < 0:
+        bytes_per_sec = 0.0
+
+    units = ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"]
+    speed = float(bytes_per_sec)
+    unit_idx = 0
+    while speed >= 1024.0 and unit_idx < len(units) - 1:
+        speed /= 1024.0
+        unit_idx += 1
+
+    if unit_idx == 0:
+        return f"{int(speed)} {units[unit_idx]}"
+    return f"{speed:.1f} {units[unit_idx]}"

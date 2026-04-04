@@ -250,4 +250,4 @@ def _print_config_error(kind: str, file_path: Path, exc: ValidationError | Value
 
 
 # Register sub-modules (triggers @cli.command / @cli.group decorators)
-from . import apply, export, init, route, tunnel  # noqa: E402, F401
+from . import apply, export, init, route, status, tunnel  # noqa: E402, F401

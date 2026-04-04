@@ -588,3 +588,42 @@ def get_firewall_status() -> list[dict]:
             grouped.setdefault(rule_name, []).append(f"[{binary}] {line}")
 
     return [{"name": name, "rules": rules} for name, rules in grouped.items()]
+
+
+def get_system_status() -> dict:
+    """Return forwarding and managed chain health for status output."""
+    ipv4_forward = _read_sysctl_bool("net.ipv4.ip_forward")
+    ipv6_forward = _read_sysctl_bool("net.ipv6.conf.all.forwarding")
+
+    chain_checks: dict[str, bool] = {}
+    rule_count = 0
+    for binary in ("iptables", "ip6tables"):
+        listing = run(
+            [binary, "-t", "filter", "-S", FORWARD_CHAIN],
+            check=False,
+            capture=True,
+        )
+        present = listing.returncode == 0
+        chain_checks[binary] = present
+        if present:
+            # Exclude chain policy line itself, count actual rules.
+            rule_count += len([line for line in listing.stdout.splitlines() if line.startswith("-A")])
+
+    return {
+        "ipv4_forward": ipv4_forward,
+        "ipv6_forward": ipv6_forward,
+        "chains_present": all(chain_checks.values()),
+        "rule_count": rule_count,
+    }
+
+
+def _read_sysctl_bool(key: str) -> bool | None:
+    result = run(["sysctl", "-n", key], check=False, capture=True)
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    if value in {"1", "on", "true"}:
+        return True
+    if value in {"0", "off", "false"}:
+        return False
+    return None
