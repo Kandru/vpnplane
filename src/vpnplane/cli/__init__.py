@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import socket
 import sys
 from pathlib import Path
 
@@ -81,11 +82,11 @@ def _load_and_validate(config_dir: Path) -> tuple[
             rd = _load_yaml_mapping(file_path)
             route = load_route(rd)
             for iface in (route.from_.interface, route.to.interface):
-                if iface not in valid_ifaces:
+                if iface not in valid_ifaces and not _system_interface_exists(iface):
                     console.print(
                         f"[yellow]Warning:[/yellow] route '{route.name}' references "
                         f"interface '{iface}' which is not a managed tunnel "
-                        f"(assuming physical interface) in {file_path}"
+                        f"or local system interface in {file_path}"
                     )
             routes.append(route)
         except (ValidationError, ValueError) as exc:
@@ -166,6 +167,17 @@ def _validate_wireguard_route_reachability(
                 errors += 1
 
     return errors
+
+
+def _system_interface_exists(iface: str) -> bool:
+    """Return True when iface exists on this system."""
+    if not iface:
+        return False
+    try:
+        socket.if_nametoindex(iface)
+        return True
+    except OSError:
+        return False
 
 
 def _validate_overlapping_wg_allowed_ips(wg_tunnels: list[WireGuardTunnel]) -> int:
