@@ -155,7 +155,7 @@ def _display_qr_code(config_text: str) -> None:
     This is useful for mobile devices that can scan QR codes to import configurations.
     """
     try:
-        qr = pyqrcode.create(config_text)
+        qr = pyqrcode.create(config_text, encoding='utf-8')
         console.print("\n[bold]WireGuard Configuration QR Code:[/bold]\n")
         # terminal() method renders the QR code as Unicode blocks
         click.echo(qr.terminal())
