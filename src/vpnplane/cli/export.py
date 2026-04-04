@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import ipaddress
 import sys
+from io import BytesIO
 from pathlib import Path
 
 import click
+import qrcode
 
 from ..ipsec import export_ipsec_config
 from ..utils import DEFAULT_CONFIG_DIR, WG_KEY_DIR, console, load_settings
@@ -34,12 +36,14 @@ def _get_all_tunnel_names(config_dir: Path) -> list[str]:
     help="Comma-separated AllowedIPs for the client [Peer] block (default: tunnel network).",
 )
 @click.option("--out", default=None, help="Write to file instead of stdout.")
+@click.option("--qr", is_flag=True, help="Display config as QR code instead of text (WireGuard only, suitable for mobile devices).")
 @click.option("--config-dir", default=str(DEFAULT_CONFIG_DIR), show_default=True)
 def export_cmd(
     name: str,
     server_endpoint: str | None,
     allowed_ips: str | None,
     out: str | None,
+    qr: bool,
     config_dir: str,
 ) -> None:
     """Export a peer config for a tunnel by name.
@@ -116,7 +120,10 @@ def export_cmd(
                 endpoint = f"{addr}:{port}"
         try:
             result = export_peer_config(wg_tunnel, endpoint, allowed_ips_list)
-            _write_output(result, out)
+            if qr:
+                _display_qr_code(result)
+            else:
+                _write_output(result, out)
         except Exception as exc:
             console.print(f"[bold red]Export failed:[/bold red] {exc}")
             sys.exit(1)
@@ -141,6 +148,63 @@ def _write_output(result: str, out: str | None) -> None:
         console.print(f"[green]Written to {out}[/green]")
     else:
         click.echo(result)
+
+
+def _display_qr_code(config_text: str) -> None:
+    """Generate and display QR code from config text.
+    
+    This is useful for mobile devices that can scan QR codes to import configurations.
+    """
+    try:
+        qr = qrcode.QRCode(
+            version=None,  # Auto-determine version based on data size
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=2,
+        )
+        qr.add_data(config_text)
+        qr.make(fit=True)
+        
+        # Create ASCII art representation
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Convert to ASCII for terminal display
+        img_ascii = img.convert("L")  # Convert to grayscale
+        ascii_qr = _image_to_ascii(img_ascii)
+        
+        console.print("\n[bold]WireGuard Configuration QR Code:[/bold]\n")
+        console.print(ascii_qr)
+        console.print("\n[dim]Scan this QR code with WireGuard mobile app to import the configuration.[/dim]\n")
+    except Exception as exc:
+        console.print(f"[yellow]Warning: Failed to generate QR code:[/yellow] {exc}")
+        console.print("\n[dim]Falling back to text format:[/dim]\n")
+        click.echo(config_text)
+
+
+def _image_to_ascii(img) -> str:
+    """Convert PIL image to ASCII art for terminal display."""
+    width, height = img.size
+    
+    # Scale factors for terminal
+    h_scale = 1
+    w_scale = 2  # Characters are taller than they are wide, so scale width more
+    
+    # Resize for terminal
+    new_width = max(4, width // w_scale)
+    new_height = max(4, height // h_scale)
+    img = img.resize((new_width, new_height))
+    
+    pixels = img.getdata()
+    ascii_chars = " .:-=+*#%@"
+    ascii_str = ""
+    
+    for i, pixel in enumerate(pixels):
+        if i % new_width == 0:
+            ascii_str += "\n"
+        # Map pixel brightness (0-255) to ASCII character
+        ascii_str += ascii_chars[min(9, pixel // 26)]
+    
+    return ascii_str
 
 
 def _print_available(wg_tunnels, ipsec_tunnels) -> None:
