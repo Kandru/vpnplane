@@ -1,4 +1,4 @@
-"""Export command — export peer config for a connection by name."""
+"""Export command — export peer config for a tunnel by name."""
 
 from __future__ import annotations
 
@@ -42,10 +42,10 @@ def export_cmd(
     out: str | None,
     config_dir: str,
 ) -> None:
-    """Export a peer config for a connection (tunnel) by name.
+    """Export a peer config for a tunnel by name.
 
     Searches IPSec tunnel names first, then WireGuard tunnel names.
-    Each WireGuard tunnel has exactly one peer; the connection name is the tunnel name.
+    Each WireGuard tunnel has exactly one peer; the tunnel name is used for export.
     """
     cfg = Path(config_dir)
     
@@ -130,7 +130,7 @@ def export_cmd(
         return
 
     # 3. Not found — show helpful error
-    console.print(f"[red]No connection named '{name}' found.[/red]")
+    console.print(f"[red]No tunnel named '{name}' found.[/red]")
     _print_available(wg_tunnels, ipsec_tunnels)
     sys.exit(1)
 
@@ -145,7 +145,7 @@ def _write_output(result: str, out: str | None) -> None:
 
 def _print_available(wg_tunnels, ipsec_tunnels) -> None:
     if wg_tunnels:
-        console.print("\n[yellow]Available WireGuard connections:[/yellow]")
+        console.print("\n[yellow]Available WireGuard tunnels:[/yellow]")
         for t in wg_tunnels:
             peer_info = f"  peer: {t.peer.name}" if t.peer else "  [dim](no peer)[/dim]"
             console.print(f"  {t.name}{peer_info}")

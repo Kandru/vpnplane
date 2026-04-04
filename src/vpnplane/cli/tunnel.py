@@ -43,7 +43,7 @@ def tunnel() -> None:
 @tunnel.command("add")
 @click.option("--config-dir", default=str(DEFAULT_CONFIG_DIR), show_default=True)
 def tunnel_add(config_dir: str) -> None:
-    """Create a new WireGuard connection (one tunnel, one peer) or an IPSec tunnel."""
+    """Create a new WireGuard tunnel (one tunnel, one peer) or an IPSec tunnel."""
     _require_settings(Path(config_dir))
     tunnels_dir = Path(config_dir) / "tunnels"
     tunnels_dir.mkdir(parents=True, exist_ok=True)
@@ -186,7 +186,7 @@ def tunnel_list(config_dir: str) -> None:
                 str(data.get("listen_port", "")),
             )
         except Exception:
-            t.add_row(f.name, "[red]parse error[/red]", "", "", "")
+            t.add_row(f.name, "[red]Parse error[/red]", "", "", "")
 
     console.print(t)
 
@@ -205,7 +205,7 @@ def _prompt_wireguard_tunnel(existing: dict | None = None, config_dir: Path | No
         if existing_tunnels:
             console.print(f"[dim]Existing tunnels: {', '.join(existing_tunnels)}[/dim]")
 
-    name = _p("Connection name (max 15 chars, e.g. wg-office)", e.get("name"))
+    name = _p("Tunnel name (max 15 chars, e.g. wg-office)", e.get("name"))
 
     fritzbox = click.confirm(
         "FritzBox site-to-site mode?",

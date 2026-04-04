@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Mapping
 
 import click
+from rich.table import Table
 
 from ..firewall import get_firewall_status, get_system_status
 from ..ipsec import get_ipsec_status
@@ -52,13 +53,11 @@ def status(config_dir: str, watch: bool, interval: float, tunnel: str | None) ->
     _validate_tunnel_filter(tunnel, desired_tunnels, live_state)
 
     if not watch:
-        console.print(
-            _build_status_text(
-                desired_tunnels=desired_tunnels,
-                routes=routes,
-                live_state=live_state,
-                tunnel_filter=tunnel,
-            )
+        _render_status(
+            desired_tunnels=desired_tunnels,
+            routes=routes,
+            live_state=live_state,
+            tunnel_filter=tunnel,
         )
         return
 
@@ -66,15 +65,13 @@ def status(config_dir: str, watch: bool, interval: float, tunnel: str | None) ->
     while True:
         try:
             click.clear()
-            console.print(
-                _build_status_text(
-                    desired_tunnels=desired_tunnels,
-                    routes=routes,
-                    live_state=live_state,
-                    tunnel_filter=tunnel,
-                    previous_counters=previous_counters,
-                    interval_secs=interval,
-                )
+            _render_status(
+                desired_tunnels=desired_tunnels,
+                routes=routes,
+                live_state=live_state,
+                tunnel_filter=tunnel,
+                previous_counters=previous_counters,
+                interval_secs=interval,
             )
             time.sleep(interval)
             previous_counters = _extract_peer_counters(live_state["wg_statuses"])
@@ -129,7 +126,7 @@ def _validate_tunnel_filter(tunnel_filter: str | None, desired_tunnels: dict, li
         sys.exit(1)
 
 
-def _build_status_text(
+def _render_status(
     *,
     desired_tunnels: Mapping[str, WireGuardTunnel | IPSecTunnel],
     routes: list[RouteRule],
@@ -137,11 +134,11 @@ def _build_status_text(
     tunnel_filter: str | None,
     previous_counters: dict[str, dict[str, tuple[int, int]]] | None = None,
     interval_secs: float | None = None,
-) -> str:
+) -> None:
     wg_live = {item["name"]: item for item in live_state["wg_statuses"]}
     ipsec_live = {item["name"]: item for item in live_state["ipsec_statuses"]}
 
-    tunnels = _build_tunnels_lines(
+    tunnels = _build_tunnels_table(
         desired_tunnels=desired_tunnels,
         wg_live=wg_live,
         ipsec_live=ipsec_live,
@@ -149,25 +146,24 @@ def _build_status_text(
         previous_counters=previous_counters,
         interval_secs=interval_secs,
     )
-    routes_block = _build_routes_lines(
+    routes_block = _build_routes_table(
         routes=routes,
         firewall_status=live_state["firewall_status"],
         tunnel_filter=tunnel_filter,
     )
-    system = _build_system_lines(live_state["system_status"])
-    return "\n".join([
-        "[bold]Tunnels[/bold]",
-        *tunnels,
-        "",
-        "[bold]Routes[/bold]",
-        *routes_block,
-        "",
-        "[bold]System[/bold]",
-        *system,
-    ])
+    system = _build_system_table(live_state["system_status"])
+
+    console.print("[bold]Tunnels[/bold]")
+    console.print(tunnels)
+    console.print()
+    console.print("[bold]Routes[/bold]")
+    console.print(routes_block)
+    console.print()
+    console.print("[bold]System[/bold]")
+    console.print(system)
 
 
-def _build_tunnels_lines(
+def _build_tunnels_table(
     *,
     desired_tunnels: Mapping[str, WireGuardTunnel | IPSecTunnel],
     wg_live: dict[str, dict],
@@ -175,8 +171,15 @@ def _build_tunnels_lines(
     tunnel_filter: str | None,
     previous_counters: dict[str, dict[str, tuple[int, int]]] | None,
     interval_secs: float | None,
-) -> list[str]:
+) -> Table:
     show_rates = previous_counters is not None and interval_secs is not None
+
+    t = Table(show_header=True, header_style="bold")
+    t.add_column("Name")
+    t.add_column("Type")
+    t.add_column("Status")
+    t.add_column("Details")
+    t.add_column("Traffic")
 
     desired_names = set(desired_tunnels.keys())
     live_names = set(wg_live.keys()) | set(ipsec_live.keys())
@@ -185,53 +188,57 @@ def _build_tunnels_lines(
     if tunnel_filter:
         names = [name for name in names if name == tunnel_filter]
 
-    lines: list[str] = []
     if not names:
-        return ["[dim]none[/dim]"]
+        t.add_row("[dim]none[/dim]", "", "", "", "")
+        return t
 
     for name in names:
         desired = desired_tunnels.get(name)
 
         if isinstance(desired, WireGuardTunnel) or name in wg_live:
             live = wg_live.get(name)
-            lines.append(
-                f"- {_name_label(name, desired is not None, live is not None)} | "
-                f"WireGuard | {_status_badge(live)} | {_wireguard_details(live)}"
+            traffic = _wireguard_traffic_cell(
+                interface=name,
+                live=live,
+                previous_counters=previous_counters,
+                interval_secs=interval_secs,
+                show_rates=show_rates,
             )
-            lines.extend(
-                _wireguard_traffic_lines(
-                    interface=name,
-                    live=live,
-                    previous_counters=previous_counters,
-                    interval_secs=interval_secs,
-                    show_rates=show_rates,
-                )
+            t.add_row(
+                _name_label(name, desired is not None, live is not None),
+                "WireGuard",
+                _status_badge(live),
+                _wireguard_details(live),
+                traffic,
             )
             continue
 
         live = ipsec_live.get(name)
-        lines.append(
-            f"- {_name_label(name, desired is not None, live is not None)} | "
-            f"IPSec | {_status_badge(live)} | {_ipsec_details(live)}"
+        t.add_row(
+            _name_label(name, desired is not None, live is not None),
+            "IPSec",
+            _status_badge(live),
+            _ipsec_details(live),
+            "-",
         )
 
-    return lines
+    return t
 
 
 def _name_label(name: str, configured: bool, present_live: bool) -> str:
     if configured and present_live:
         return name
     if configured and not present_live:
-        return f"{name} [yellow](not applied)[/yellow]"
+        return f"{name} [yellow](Not applied)[/yellow]"
     return f"{name} [dim](unmanaged)[/dim]"
 
 
 def _status_badge(live: dict | None) -> str:
     if not live:
-        return "[yellow]CONFIG ONLY[/yellow]"
+        return "[yellow]Configured only[/yellow]"
     if live.get("active"):
-        return "[green]UP[/green]"
-    return "[red]DOWN[/red]"
+        return "[green]Up[/green]"
+    return "[red]Down[/red]"
 
 
 def _wireguard_details(live: dict | None) -> str:
@@ -244,16 +251,16 @@ def _wireguard_details(live: dict | None) -> str:
     return f"addr={address} | port={listen_port} | peers={peer_count}"
 
 
-def _wireguard_traffic_lines(
+def _wireguard_traffic_cell(
     *,
     interface: str,
     live: dict | None,
     previous_counters: dict[str, dict[str, tuple[int, int]]] | None,
     interval_secs: float | None,
     show_rates: bool,
-) -> list[str]:
+) -> str:
     if not live:
-        return ["  [dim]traffic: n/a[/dim]"]
+        return "[dim]n/a[/dim]"
 
     peer_lines: list[str] = []
     prev_iface = previous_counters.get(interface, {}) if previous_counters else {}
@@ -278,8 +285,8 @@ def _wireguard_traffic_lines(
         peer_lines.append(line)
 
     if not peer_lines:
-        return ["  [dim]traffic: none[/dim]"]
-    return [f"  {line}" for line in peer_lines]
+        return "[dim]none[/dim]"
+    return "\n".join(peer_lines)
 
 
 def _ipsec_details(live: dict | None) -> str:
@@ -292,52 +299,60 @@ def _ipsec_details(live: dict | None) -> str:
     return f"state={state} | est={established_ago} | child_sas={child_sas}"
 
 
-def _build_routes_lines(routes: list[RouteRule], firewall_status: list[dict], tunnel_filter: str | None) -> list[str]:
+def _build_routes_table(routes: list[RouteRule], firewall_status: list[dict], tunnel_filter: str | None) -> Table:
+    t = Table(show_header=True, header_style="bold")
+    t.add_column("Name")
+    t.add_column("From → To")
+    t.add_column("Protocol")
+    t.add_column("Action")
+    t.add_column("Status")
+
     installed = {item["name"] for item in firewall_status}
 
     shown = 0
-    lines: list[str] = []
     for route in routes:
         if tunnel_filter and tunnel_filter not in {route.from_.interface, route.to.interface}:
             continue
 
-        status = "[green]INSTALLED[/green]" if route.name in installed else "[yellow]NOT APPLIED[/yellow]"
+        status = "[green]Installed[/green]" if route.name in installed else "[yellow]Not applied[/yellow]"
         path = f"{route.from_.interface} -> {route.to.interface}"
         protocol = route.protocol
         if route.ports:
             protocol += f"/{','.join(str(p) for p in route.ports)}"
 
-        lines.append(f"- {route.name} | {path} | {protocol} | {route.action} | {status}")
+        t.add_row(route.name, path, protocol, route.action, status)
         shown += 1
 
     if shown == 0:
-        lines.append("[dim]none[/dim]")
+        t.add_row("[dim]none[/dim]", "", "", "", "")
 
-    return lines
+    return t
 
 
-def _build_system_lines(system_status: dict) -> list[str]:
-    lines = [
-        f"- IPv4 forwarding: {_on_off(system_status.get('ipv4_forward'))}",
-        f"- IPv6 forwarding: {_on_off(system_status.get('ipv6_forward'))}",
-    ]
+def _build_system_table(system_status: dict) -> Table:
+    t = Table(show_header=True, header_style="bold")
+    t.add_column("Check")
+    t.add_column("Status")
+
+    t.add_row("IPv4 forwarding", _on_off(system_status.get("ipv4_forward")))
+    t.add_row("IPv6 forwarding", _on_off(system_status.get("ipv6_forward")))
 
     chains_present = system_status.get("chains_present")
     rule_count = system_status.get("rule_count", 0)
     if chains_present:
-        chain_status = f"[green]ACTIVE[/green] ({rule_count} rules)"
+        chain_status = f"[green]Active[/green] ({rule_count} rules)"
     else:
-        chain_status = "[red]MISSING[/red]"
-    lines.append(f"- vpnplane chains: {chain_status}")
-    return lines
+        chain_status = "[red]Missing[/red]"
+    t.add_row("vpnplane chains", chain_status)
+    return t
 
 
 def _on_off(value: bool | None) -> str:
     if value is True:
-        return "[green]ENABLED[/green]"
+        return "[green]Enabled[/green]"
     if value is False:
-        return "[red]DISABLED[/red]"
-    return "[yellow]UNKNOWN[/yellow]"
+        return "[red]Disabled[/red]"
+    return "[yellow]Unknown[/yellow]"
 
 
 def _extract_peer_counters(wg_statuses: list[dict]) -> dict[str, dict[str, tuple[int, int]]]:

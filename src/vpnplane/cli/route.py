@@ -161,7 +161,7 @@ def route_list(config_dir: str) -> None:
                 data.get("action", "allow"),
             )
         except Exception:
-            t.add_row(f.name, "[red]parse error[/red]", "", "", "")
+            t.add_row(f.name, "[red]Parse error[/red]", "", "", "")
 
     console.print(t)
 
@@ -177,7 +177,7 @@ def _build_interface_map(
 
     Returns:
         peer_map: unused (kept for API compatibility, always empty)
-        valid_names: set of all valid tunnel/connection names
+        valid_names: set of all valid tunnel names
         iface_subnets: best-effort subnet defaults per managed interface
     """
     peer_map: dict[str, tuple[str, list[str]]] = {}
@@ -426,7 +426,7 @@ def _prompt_route(
 
     if valid_names:
         console.print(
-            f"[dim]Available connections/interfaces: [bold]{', '.join(sorted(valid_names))}[/bold][/dim]"
+            f"[dim]Available tunnels/interfaces: [bold]{', '.join(sorted(valid_names))}[/bold][/dim]"
         )
 
     name = _prompt_validated(
@@ -439,7 +439,7 @@ def _prompt_route(
         # Offer choice from valid_names if available, otherwise allow free text
         if valid_names:
             from_raw = click.prompt(
-                "Source (connection name or physical NIC)",
+                "Source (tunnel name or physical NIC)",
                 type=click.Choice(list(valid_names) + ["(other)"], case_sensitive=False),
                 default=e_from.get("interface", ""),
             )
@@ -451,7 +451,7 @@ def _prompt_route(
                 )
         else:
             from_raw = _prompt_validated(
-                "Source (connection name or physical NIC)",
+                "Source (tunnel name or physical NIC)",
                 e_from.get("interface", ""),
                 _validate_interface,
             )
@@ -459,7 +459,7 @@ def _prompt_route(
         from_iface, from_auto_subnets = _resolve_interface(from_raw, peer_map)
         if from_raw not in valid_names and valid_names:
             console.print(
-                f"[yellow]Warning:[/yellow] '{from_raw}' is not a known connection — "
+                f"[yellow]Warning:[/yellow] '{from_raw}' is not a known tunnel — "
                 f"will be treated as a physical interface."
             )
             if not click.confirm("Continue?", default=True):
@@ -520,7 +520,7 @@ def _prompt_route(
             # Offer choice from valid_names if available, otherwise allow free text
             if valid_names:
                 to_raw = click.prompt(
-                    "Destination (connection name or physical NIC)",
+                    "Destination (tunnel name or physical NIC)",
                     type=click.Choice(list(valid_names) + ["(other)"], case_sensitive=False),
                     default=e_to.get("interface", ""),
                 )
@@ -532,7 +532,7 @@ def _prompt_route(
                     )
             else:
                 to_raw = _prompt_validated(
-                    "Destination (connection name or physical NIC)",
+                    "Destination (tunnel name or physical NIC)",
                     e_to.get("interface", ""),
                     _validate_interface,
                 )
@@ -553,7 +553,7 @@ def _prompt_route(
 
             if to_raw not in valid_names and valid_names:
                 console.print(
-                    f"[yellow]Warning:[/yellow] '{to_raw}' is not a known connection — "
+                    f"[yellow]Warning:[/yellow] '{to_raw}' is not a known tunnel — "
                     f"will be treated as a physical interface."
                 )
                 if not click.confirm("Continue?", default=True):
