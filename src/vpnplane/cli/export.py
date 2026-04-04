@@ -182,27 +182,29 @@ def _display_qr_code(config_text: str) -> None:
 
 
 def _image_to_ascii(img) -> str:
-    """Convert PIL image to ASCII art for terminal display."""
+    """Convert PIL image to Unicode block art for terminal display."""
     width, height = img.size
     
-    # Scale factors for terminal
-    h_scale = 1
-    w_scale = 2  # Characters are taller than they are wide, so scale width more
-    
-    # Resize for terminal
-    new_width = max(4, width // w_scale)
-    new_height = max(4, height // h_scale)
+    # Resize for terminal (scale down to fit nicely)
+    # Terminal characters are roughly 2x as tall as wide
+    new_width = max(20, width // 2)
+    new_height = max(10, height // 2)
     img = img.resize((new_width, new_height))
     
     pixels = img.getdata()
-    ascii_chars = " .:-=+*#%@"
+    new_width_actual, new_height_actual = img.size
+    
     ascii_str = ""
     
     for i, pixel in enumerate(pixels):
-        if i % new_width == 0:
+        if i % new_width_actual == 0:
             ascii_str += "\n"
-        # Map pixel brightness (0-255) to ASCII character
-        ascii_str += ascii_chars[min(9, pixel // 26)]
+        # QR codes are black (low values) and white (high values)
+        # Use unicode block characters for better visual representation
+        if pixel < 128:  # Black/dark
+            ascii_str += "██"
+        else:  # White/light
+            ascii_str += "  "
     
     return ascii_str
 
