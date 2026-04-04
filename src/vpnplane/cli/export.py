@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import ipaddress
 import sys
-from io import BytesIO
 from pathlib import Path
 
 import click
-import qrcode
+import pyqrcode
 
 from ..ipsec import export_ipsec_config
 from ..utils import DEFAULT_CONFIG_DIR, WG_KEY_DIR, console, load_settings
@@ -156,57 +155,15 @@ def _display_qr_code(config_text: str) -> None:
     This is useful for mobile devices that can scan QR codes to import configurations.
     """
     try:
-        qr = qrcode.QRCode(
-            version=None,  # Auto-determine version based on data size
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=10,
-            border=2,
-        )
-        qr.add_data(config_text)
-        qr.make(fit=True)
-        
-        # Create ASCII art representation
-        img = qr.make_image(fill_color="black", back_color="white")
-        
-        # Convert to ASCII for terminal display
-        img_ascii = img.convert("L")  # Convert to grayscale
-        ascii_qr = _image_to_ascii(img_ascii)
-        
+        qr = pyqrcode.create(config_text)
         console.print("\n[bold]WireGuard Configuration QR Code:[/bold]\n")
-        console.print(ascii_qr)
+        # terminal() method renders the QR code as Unicode blocks
+        click.echo(qr.terminal())
         console.print("\n[dim]Scan this QR code with WireGuard mobile app to import the configuration.[/dim]\n")
     except Exception as exc:
         console.print(f"[yellow]Warning: Failed to generate QR code:[/yellow] {exc}")
         console.print("\n[dim]Falling back to text format:[/dim]\n")
         click.echo(config_text)
-
-
-def _image_to_ascii(img) -> str:
-    """Convert PIL image to Unicode block art for terminal display."""
-    width, height = img.size
-    
-    # Aggressively resize to terminal-friendly size (around 40-50 chars wide)
-    aspect_ratio = width / height
-    new_width = 40
-    new_height = int(new_width / aspect_ratio / 2)  # Divide by 2 because chars are taller than wide
-    img = img.resize((new_width, new_height))
-    
-    pixels = img.getdata()
-    new_width_actual, new_height_actual = img.size
-    
-    ascii_str = ""
-    
-    for i, pixel in enumerate(pixels):
-        if i % new_width_actual == 0 and i > 0:
-            ascii_str += "\n"
-        # QR codes are black (low values) and white (high values)
-        # Use single character per pixel for compactness
-        if pixel < 128:  # Black/dark
-            ascii_str += "█"
-        else:  # White/light
-            ascii_str += " "
-    
-    return ascii_str
 
 
 def _print_available(wg_tunnels, ipsec_tunnels) -> None:
