@@ -29,7 +29,7 @@ def _get_all_tunnel_names(config_dir: Path) -> list[str]:
 
 
 @cli.command("export")
-@click.argument("name", type=click.Choice([], case_sensitive=False), required=False)
+@click.argument("name", required=False)
 @click.option("--server-endpoint", default=None, help="Public IP:port override (default: server_address + tunnel port from settings.yaml).")
 @click.option(
     "--allowed-ips", default=None,
@@ -39,7 +39,7 @@ def _get_all_tunnel_names(config_dir: Path) -> list[str]:
 @click.option("--qr", is_flag=True, help="Display config as QR code instead of text (WireGuard only, suitable for mobile devices).")
 @click.option("--config-dir", default=str(DEFAULT_CONFIG_DIR), show_default=True)
 def export_cmd(
-    name: str,
+    name: str | None,
     server_endpoint: str | None,
     allowed_ips: str | None,
     out: str | None,

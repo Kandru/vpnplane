@@ -55,9 +55,9 @@ def route_add(config_dir: str) -> None:
 
 
 @route.command("edit")
-@click.argument("name", type=click.Choice([], case_sensitive=False), required=False)
+@click.argument("name", required=False)
 @click.option("--config-dir", default=str(DEFAULT_CONFIG_DIR), show_default=True)
-def route_edit(name: str, config_dir: str) -> None:
+def route_edit(name: str | None, config_dir: str) -> None:
     """Interactively edit an existing route config file."""
     _require_settings(Path(config_dir))
     config_path = Path(config_dir)
@@ -91,10 +91,10 @@ def route_edit(name: str, config_dir: str) -> None:
 
 
 @route.command("delete")
-@click.argument("name", type=click.Choice([], case_sensitive=False), required=False)
+@click.argument("name", required=False)
 @click.option("--config-dir", default=str(DEFAULT_CONFIG_DIR), show_default=True)
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
-def route_delete(name: str, config_dir: str, yes: bool) -> None:
+def route_delete(name: str | None, config_dir: str, yes: bool) -> None:
     """Delete a route config file."""
     _require_settings(Path(config_dir))
     config_path = Path(config_dir)
