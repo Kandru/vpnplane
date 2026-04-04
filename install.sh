@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-INSTALL_DIR="/opt/vpnplane"
+STAGING_DIR="/tmp/vpnplane"
+VENV_DIR="/opt/vpnplane-venv"
 BIN_LINK="/usr/local/bin/vpnplane"
 CONFIG_DIR="/etc/vpnplane"
 REPO_URL="https://github.com/Kandru/vpnplane.git"
@@ -17,6 +18,14 @@ NC='\033[0m'
 log()  { echo -e "${GREEN}[install]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 err()  { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
+
+cleanup() {
+    if [[ -d "$STAGING_DIR" ]]; then
+        rm -rf "$STAGING_DIR"
+    fi
+}
+
+trap cleanup EXIT
 
 # ---- root check ----
 if [[ "$EUID" -ne 0 ]]; then
@@ -61,40 +70,28 @@ if ! ufw status | grep -q "Status: active"; then
     fi
 fi
 
-# ---- clone, copy, or update source ----
-if [[ -d "$INSTALL_DIR/.git" ]]; then
-    log "Found existing installation at $INSTALL_DIR — checking for updates..."
-    CURRENT_SHA=$(git -C "$INSTALL_DIR" rev-parse HEAD)
-    git -C "$INSTALL_DIR" fetch --depth=1 origin main
-    NEW_SHA=$(git -C "$INSTALL_DIR" rev-parse FETCH_HEAD)
+# ---- prepare temporary source staging ----
+cleanup
 
-    if [[ "$CURRENT_SHA" == "$NEW_SHA" ]]; then
-        log "Already up to date ($(git -C "$INSTALL_DIR" describe --tags --always 2>/dev/null || echo "${CURRENT_SHA:0:8}"))."
-    else
-        log "Updating: ${CURRENT_SHA:0:8} -> ${NEW_SHA:0:8}"
-        git -C "$INSTALL_DIR" merge --ff-only FETCH_HEAD
-    fi
+# If script is run from inside the repo, copy it; otherwise clone
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/pyproject.toml" ]]; then
+    log "Copying local source to temporary staging at $STAGING_DIR..."
+    rsync -a --delete "$SCRIPT_DIR/" "$STAGING_DIR/"
 else
-    # If script is run from inside the repo, copy it; otherwise clone
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [[ -f "$SCRIPT_DIR/pyproject.toml" ]]; then
-        log "Copying from local source to $INSTALL_DIR..."
-        rsync -a --delete "$SCRIPT_DIR/" "$INSTALL_DIR/"
-    else
-        log "Cloning repository to $INSTALL_DIR..."
-        git clone --depth=1 "$REPO_URL" "$INSTALL_DIR"
-    fi
+    log "Cloning repository to temporary staging at $STAGING_DIR..."
+    git clone --depth=1 "$REPO_URL" "$STAGING_DIR"
 fi
 
 # ---- Python venv + install ----
 log "Setting up Python virtual environment..."
-python3 -m venv --clear "$INSTALL_DIR/.venv"
-"$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade pip setuptools
-"$INSTALL_DIR/.venv/bin/pip" install --quiet -e "$INSTALL_DIR"
+python3 -m venv --clear "$VENV_DIR"
+"$VENV_DIR/bin/pip" install --quiet --upgrade pip setuptools
+"$VENV_DIR/bin/pip" install --quiet "$STAGING_DIR"
 
 # ---- symlink ----
-ln -sf "$INSTALL_DIR/.venv/bin/vpnplane" "$BIN_LINK"
-log "Installed: $BIN_LINK → $INSTALL_DIR/.venv/bin/vpnplane"
+ln -sf "$VENV_DIR/bin/vpnplane" "$BIN_LINK"
+log "Installed: $BIN_LINK → $VENV_DIR/bin/vpnplane"
 
 # ---- config directory ----
 mkdir -p "$CONFIG_DIR"
@@ -108,7 +105,7 @@ chmod 700 /etc/wireguard/keys
 if [[ ! -f "$CONFIG_DIR/settings.yaml" ]]; then
     echo ""
     log "Running first-time setup wizard..."
-    "$INSTALL_DIR/.venv/bin/vpnplane" init --config-dir "$CONFIG_DIR" </dev/tty
+    "$VENV_DIR/bin/vpnplane" init --config-dir "$CONFIG_DIR" </dev/tty
 fi
 
 # ---- done ----
