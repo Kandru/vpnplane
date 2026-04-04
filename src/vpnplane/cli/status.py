@@ -262,23 +262,32 @@ def _wireguard_traffic_cell(
     if not live:
         return "[dim]n/a[/dim]"
 
+    peers = live.get("peers", [])
     peer_lines: list[str] = []
     prev_iface = previous_counters.get(interface, {}) if previous_counters else {}
+    show_peer_name = len(peers) > 1
 
-    for peer in live.get("peers", []):
+    for peer in peers:
         key = peer.get("public_key")
         key_short = peer.get("public_key_short", "peer")
         rx = int(peer.get("rx_bytes", 0))
         tx = int(peer.get("tx_bytes", 0))
-        hs = peer.get("handshake") or "never"
+        last_seen = peer.get("handshake") or "never"
 
-        line = f"{key_short} rx {format_bytes(rx)} tx {format_bytes(tx)} hs {hs}"
+        parts = []
+        if show_peer_name:
+            parts.append(key_short)
+        parts.append(f"\u2193 {format_bytes(rx)}")
+        parts.append(f"\u2191 {format_bytes(tx)}")
+        parts.append(f"\U0001F517 {last_seen}")  # 🔗 emoji for handshake
+
+        line = " ".join(parts)
         if show_rates and key and interval_secs:
             prev = prev_iface.get(key)
             if prev:
                 rx_rate = max(0, rx - prev[0]) / interval_secs
                 tx_rate = max(0, tx - prev[1]) / interval_secs
-                line += f" | \u2193 {format_speed(rx_rate)} \u2191 {format_speed(tx_rate)}"
+                line += f" | \u2193 {format_speed(rx_rate)}/s \u2191 {format_speed(tx_rate)}/s"
             else:
                 line += " | [dim]rate n/a[/dim]"
 
