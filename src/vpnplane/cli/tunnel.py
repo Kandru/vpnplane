@@ -213,30 +213,23 @@ def _prompt_wireguard_tunnel(existing: dict | None = None, config_dir: Path | No
     )
 
     default_address = e.get("address")
-    default_transfer_subnet = e.get("tunnel_subnet")
     auto_tunnel_addr = None
     if not existing and config_dir is not None:
         try:
             auto_tunnel_addr = next_free_tunnel_addr(config_dir)
             if default_address is None:
                 default_address = auto_tunnel_addr
-            if default_transfer_subnet is None and auto_tunnel_addr:
-                default_transfer_subnet = str(ipaddress.ip_interface(auto_tunnel_addr).network)
         except Exception as exc:
             console.print(f"[yellow]Could not auto-detect free subnet: {exc}[/yellow]")
+
+    address = _p("Tunnel address (CIDR, e.g. 10.100.0.1/30)", default_address)
+    fritzbox_ip = e.get("fritzbox_ip")
     if fritzbox:
         console.print(
-            "[dim]FritzBox mode: Address must be the FritzBox tunnel gateway IP "
-            "(first usable host in the subnet), e.g. [bold]192.168.178.1/24[/bold][/dim]"
+            "[dim]FritzBox mode: set fritzbox_ip to the FritzBox tunnel gateway IP "
+            "(first usable host), e.g. [bold]192.168.178.1/24[/bold][/dim]"
         )
-        address = _p("Tunnel address — FritzBox gateway IP (e.g. 192.168.178.1/24)", default_address)
-        tunnel_subnet = _p(
-            "Host WireGuard transfer subnet (CIDR, e.g. 10.100.0.0/30)",
-            default_transfer_subnet,
-        )
-    else:
-        address = _p("Tunnel address (CIDR, e.g. 10.100.0.1/24)", default_address)
-        tunnel_subnet = None
+        fritzbox_ip = _p("FritzBox gateway IP (CIDR, e.g. 192.168.178.1/24)", fritzbox_ip)
 
     default_port: str | int = e.get("listen_port", "")
     if not existing and config_dir is not None and not default_port:
@@ -278,8 +271,8 @@ def _prompt_wireguard_tunnel(existing: dict | None = None, config_dir: Path | No
         "fritzbox": fritzbox,
         "description": description,
     }
-    if tunnel_subnet:
-        data["tunnel_subnet"] = tunnel_subnet
+    if fritzbox and fritzbox_ip:
+        data["fritzbox_ip"] = fritzbox_ip
 
     if listen_port is not None:
         data["listen_port"] = listen_port
@@ -287,20 +280,11 @@ def _prompt_wireguard_tunnel(existing: dict | None = None, config_dir: Path | No
         data["dns"] = [d.strip() for d in dns_raw.split(",") if d.strip()]
 
     peer_tunnel_addr = address
-    if fritzbox and tunnel_subnet:
-        try:
-            net = ipaddress.ip_network(tunnel_subnet, strict=True)
-            first_host = next(net.hosts(), None)
-            if first_host is not None:
-                peer_tunnel_addr = f"{first_host}/{net.prefixlen}"
-        except ValueError:
-            # Keep prompt flow interactive; model validation will report invalid subnet.
-            peer_tunnel_addr = address
 
     fritzbox_subnet: str | None = None
-    if fritzbox:
+    if fritzbox and fritzbox_ip:
         try:
-            fritzbox_subnet = str(ipaddress.ip_interface(address).network)
+            fritzbox_subnet = str(ipaddress.ip_interface(fritzbox_ip).network)
         except ValueError:
             fritzbox_subnet = None
 

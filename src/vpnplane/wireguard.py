@@ -315,8 +315,12 @@ def export_peer_config(
         psk = read_key_file(peer.preshared_key)
 
     if tunnel.fritzbox:
+        if not tunnel.fritzbox_ip:
+            raise ValueError(
+                f"Tunnel {tunnel.name!r} is fritzbox-enabled but has no fritzbox_ip configured"
+            )
         # FritzBox exports use the FritzBox gateway IP as peer interface address.
-        peer_address = tunnel.address
+        peer_address = tunnel.fritzbox_ip
     else:
         # Peer's tunnel address: first /32 or /128 in allowed_ips
         peer_address = next(

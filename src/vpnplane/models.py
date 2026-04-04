@@ -99,6 +99,7 @@ class WireGuardTunnel(BaseModel):
     mtu: int = Field(default=1420, ge=576, le=9000)
     table: str = "auto"
     fritzbox: bool = False
+    fritzbox_ip: str | None = None
     tunnel_subnet: str | None = None
     post_up: list[str] = []
     post_down: list[str] = []
@@ -130,50 +131,42 @@ class WireGuardTunnel(BaseModel):
             raise ValueError(f"Invalid tunnel_subnet CIDR network: {v!r}")
         return v
 
+    @field_validator("fritzbox_ip")
+    @classmethod
+    def validate_fritzbox_ip(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _validate_cidr(v)
+
     @model_validator(mode="after")
-    def validate_fritzbox_address(self) -> WireGuardTunnel:
+    def validate_fritzbox_settings(self) -> WireGuardTunnel:
         if not self.fritzbox:
             return self
 
-        iface = ipaddress.ip_interface(self.address)
+        if not self.fritzbox_ip:
+            raise ValueError(
+                "fritzbox=true requires fritzbox_ip "
+                "(e.g. 192.168.178.1/24) for FritzBox export behavior"
+            )
+
+        iface = ipaddress.ip_interface(self.fritzbox_ip)
         if iface.version != 4:
-            raise ValueError("fritzbox=true currently supports IPv4 tunnel addresses only")
+            raise ValueError("fritzbox=true currently supports IPv4 fritzbox_ip only")
         if iface.network.prefixlen >= 32:
-            raise ValueError("fritzbox=true requires a subnet address like 192.168.178.1/24, not /32")
+            raise ValueError("fritzbox=true requires fritzbox_ip like 192.168.178.1/24, not /32")
 
         first_host = next(iface.network.hosts(), None)
         if first_host is None or iface.ip != first_host:
             raise ValueError(
-                "fritzbox=true requires Address to use the FritzBox tunnel gateway IP "
+                "fritzbox=true requires fritzbox_ip to use the FritzBox tunnel gateway IP "
                 "(first usable host), e.g. 192.168.178.1/24"
             )
-
-        if not self.tunnel_subnet:
-            raise ValueError(
-                "fritzbox=true requires tunnel_subnet (e.g. 10.100.0.0/30) "
-                "for the host-side WireGuard transfer network"
-            )
-
-        transfer_net = ipaddress.ip_network(self.tunnel_subnet, strict=True)
-        if transfer_net.version != 4:
-            raise ValueError("fritzbox=true currently supports IPv4 tunnel_subnet only")
-        if transfer_net.prefixlen >= 31:
-            raise ValueError("fritzbox=true requires tunnel_subnet with at least 2 usable hosts (e.g. /30)")
 
         return self
 
     def interface_address(self) -> str:
         """Return the address assigned to the local Linux WireGuard interface."""
-        if not self.fritzbox:
-            return self.address
-
-        transfer_net = ipaddress.ip_network(self.tunnel_subnet, strict=True)
-        first_host = next(transfer_net.hosts(), None)
-        if first_host is None:
-            raise ValueError(
-                f"tunnel_subnet has no usable host IPs: {self.tunnel_subnet}"
-            )
-        return f"{first_host}/{transfer_net.prefixlen}"
+        return self.address
 
     def interface_network(self) -> ipaddress.IPv4Network | ipaddress.IPv6Network:
         """Return the network of the local Linux WireGuard interface."""

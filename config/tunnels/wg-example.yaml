@@ -9,16 +9,14 @@ type: wireguard
 name: wg-office
 
 # This machine's IP address on the tunnel network
-# If fritzbox: true, this must be the FritzBox tunnel gateway IP with subnet
-# (example: 192.168.178.1/24) so site-to-site routing behaves correctly.
-address: 192.168.178.1/24
+address: 10.100.0.1/30
 
 # Enable when the remote side is a FritzBox site-to-site peer.
 fritzbox: false
 
 # Required when fritzbox: true.
-# Transfer subnet used on this host's WireGuard interface (host uses first usable IP).
-tunnel_subnet: 10.100.0.0/30
+# FritzBox gateway IP/subnet (first usable host), used for FritzBox peer export.
+fritzbox_ip: 192.168.178.1/24
 
 # UDP port this machine listens on (omit for client-only mode)
 # Each connection should use a unique port (auto-assigned by: vpnplane tunnel add)
@@ -45,7 +43,7 @@ peer:
   # Endpoint: peer's public IP:port (omit if the peer roams / has no fixed IP)
   endpoint: "203.0.113.10:51820"
   # Subnets reachable via this peer
-  # Always include the peer's tunnel IP (or transfer subnet in FritzBox mode),
+  # Always include the peer's tunnel IP,
   # plus any subnets behind them
   allowed_ips:
     - 10.10.1.2/32        # peer's tunnel IP
