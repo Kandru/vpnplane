@@ -312,6 +312,7 @@ def _build_routes_table(routes: list[RouteRule], firewall_status: list[dict], tu
     t = Table(show_header=True, header_style="bold")
     t.add_column("Name")
     t.add_column("From → To")
+    t.add_column("Subnets")
     t.add_column("Protocol")
     t.add_column("Action")
     t.add_column("Status")
@@ -329,11 +330,16 @@ def _build_routes_table(routes: list[RouteRule], firewall_status: list[dict], tu
         if route.ports:
             protocol += f"/{','.join(str(p) for p in route.ports)}"
 
-        t.add_row(route.name, path, protocol, route.action, status)
+        # Format subnets for display
+        from_subnets = ", ".join(route.from_.subnets) if route.from_.subnets else "[dim]any[/dim]"
+        to_subnets = ", ".join(route.to.subnets) if route.to.subnets else "[dim]any[/dim]"
+        subnets_display = f"{from_subnets} → {to_subnets}"
+
+        t.add_row(route.name, path, subnets_display, protocol, route.action, status)
         shown += 1
 
     if shown == 0:
-        t.add_row("[dim]none[/dim]", "", "", "", "")
+        t.add_row("[dim]none[/dim]", "", "", "", "", "")
 
     return t
 
