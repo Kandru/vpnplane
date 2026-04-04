@@ -27,6 +27,40 @@ def _get_all_tunnel_names(config_dir: Path) -> list[str]:
     return sorted([f.stem for f in tunnels_dir.glob("*.yaml")])
 
 
+def _collect_roadwarrior_ipv4_targets(tunnel_name: str, routes) -> list[str]:
+    """Collect unique IPv4 destination CIDRs from allow routes sourced by this tunnel."""
+    targets: list[str] = []
+
+    for route in routes:
+        if route.action != "allow":
+            continue
+        if route.from_.interface != tunnel_name:
+            continue
+
+        for subnet in route.to.subnets:
+            net = ipaddress.ip_network(subnet, strict=False)
+            if net.version != 4:
+                continue
+            canonical = str(net)
+            if canonical not in targets:
+                targets.append(canonical)
+
+    return targets
+
+
+def _merge_allowed_ips(existing: list[str] | None, extras: list[str]) -> list[str]:
+    """Merge and normalize CIDR lists while preserving order."""
+    merged: list[str] = []
+
+    for group in (existing or [], extras):
+        for cidr in group:
+            canonical = str(ipaddress.ip_network(cidr, strict=False))
+            if canonical not in merged:
+                merged.append(canonical)
+
+    return merged
+
+
 @cli.command("export")
 @click.argument("name", required=False)
 @click.option("--server-endpoint", default=None, help="Public IP:port override (default: server_address + tunnel port from settings.yaml).")
@@ -63,7 +97,7 @@ def export_cmd(
             type=click.Choice(available, case_sensitive=False),
         )
     
-    wg_tunnels, ipsec_tunnels, _ = _load_and_validate(cfg)
+    wg_tunnels, ipsec_tunnels, routes = _load_and_validate(cfg)
 
     allowed_ips_list: list[str] | None = None
     if allowed_ips:
@@ -117,6 +151,18 @@ def export_cmd(
             if addr:
                 port = wg_tunnel.listen_port or settings["wireguard"]["default_listen_port"]
                 endpoint = f"{addr}:{port}"
+
+        roadwarrior_targets = _collect_roadwarrior_ipv4_targets(wg_tunnel.name, routes)
+        if roadwarrior_targets:
+            if roadwarrior_targets == ["0.0.0.0/0"]:
+                # Full redirect: enforce full tunnel.
+                allowed_ips_list = ["0.0.0.0/0"]
+            else:
+                # Specific target routes: merge route targets with current export targets.
+                base_allowed = allowed_ips_list
+                if base_allowed is None:
+                    base_allowed = [str(wg_tunnel.interface_network())]
+                allowed_ips_list = _merge_allowed_ips(base_allowed, roadwarrior_targets)
         try:
             result = export_peer_config(wg_tunnel, endpoint, allowed_ips_list)
             if qr:
