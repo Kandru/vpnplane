@@ -185,10 +185,10 @@ def _image_to_ascii(img) -> str:
     """Convert PIL image to Unicode block art for terminal display."""
     width, height = img.size
     
-    # Resize for terminal (scale down to fit nicely)
-    # Terminal characters are roughly 2x as tall as wide
-    new_width = max(20, width // 2)
-    new_height = max(10, height // 2)
+    # Aggressively resize to terminal-friendly size (around 40-50 chars wide)
+    aspect_ratio = width / height
+    new_width = 40
+    new_height = int(new_width / aspect_ratio / 2)  # Divide by 2 because chars are taller than wide
     img = img.resize((new_width, new_height))
     
     pixels = img.getdata()
@@ -197,14 +197,14 @@ def _image_to_ascii(img) -> str:
     ascii_str = ""
     
     for i, pixel in enumerate(pixels):
-        if i % new_width_actual == 0:
+        if i % new_width_actual == 0 and i > 0:
             ascii_str += "\n"
         # QR codes are black (low values) and white (high values)
-        # Use unicode block characters for better visual representation
+        # Use single character per pixel for compactness
         if pixel < 128:  # Black/dark
-            ascii_str += "██"
+            ascii_str += "█"
         else:  # White/light
-            ascii_str += "  "
+            ascii_str += " "
     
     return ascii_str
 
