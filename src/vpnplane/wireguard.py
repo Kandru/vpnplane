@@ -32,9 +32,6 @@ PrivateKey = {{ private_key }}
 {% if tunnel.listen_port -%}
 ListenPort = {{ tunnel.listen_port }}
 {% endif -%}
-{% if tunnel.dns -%}
-DNS = {{ tunnel.dns | join(', ') }}
-{% endif -%}
 MTU = {{ tunnel.mtu }}
 {% if tunnel.table != 'auto' -%}
 Table = {{ tunnel.table }}
