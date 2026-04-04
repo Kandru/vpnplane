@@ -153,12 +153,24 @@ def _display_qr_code(config_text: str) -> None:
     """Generate and display QR code from config text.
     
     This is useful for mobile devices that can scan QR codes to import configurations.
+    Uses only essential config lines to keep QR code size manageable.
     """
     try:
-        qr = pyqrcode.create(config_text, encoding='utf-8')
+        # Extract only essential lines (no comments, no empty lines)
+        essential_lines = []
+        for line in config_text.split('\n'):
+            line = line.strip()
+            # Keep section headers and essential config lines, skip comments and empty lines
+            if line and not line.startswith('#'):
+                essential_lines.append(line)
+        
+        essential_config = '\n'.join(essential_lines)
+        
+        qr = pyqrcode.create(essential_config, encoding='utf-8')
         console.print("\n[bold]WireGuard Configuration QR Code:[/bold]\n")
         # terminal() method renders the QR code as Unicode blocks
-        click.echo(qr.terminal())
+        # quiet_zone=1 minimizes the white border around the QR code
+        click.echo(qr.terminal(quiet_zone=1))
         console.print("\n[dim]Scan this QR code with WireGuard mobile app to import the configuration.[/dim]\n")
     except Exception as exc:
         console.print(f"[yellow]Warning: Failed to generate QR code:[/yellow] {exc}")
